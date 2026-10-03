@@ -1,10 +1,8 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { readyDb, sql, type TokenRow } from "./db";
 import { bankMailQuery, messageText, type MailHeader, type MailPart } from "./mail-text";
 import type { GmailAlert, GmailStatus } from "./gmail-types";
 
-const TOKEN_PATH = path.join(process.cwd(), ".data", "gmail-token.json");
-const SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+const SCOPE = "openid email https://www.googleapis.com/auth/gmail.readonly";
 
 type StoredToken = {
   refreshToken: string;
@@ -30,7 +28,12 @@ function clientSecret(): string {
 }
 
 export function gmailConfigured(): boolean {
-  return Boolean(clientId() && clientSecret());
+  return Boolean(
+    clientId() &&
+      clientSecret() &&
+      process.env.DATABASE_URL?.trim() &&
+      (process.env.SESSION_SECRET?.trim().length ?? 0) >= 16,
+  );
 }
 
 export function redirectUri(origin: string): string {
@@ -51,28 +54,48 @@ export function googleAuthUrl(origin: string, state: string): string {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
 
-async function readToken(): Promise<StoredToken | null> {
-  try {
-    const parsed = JSON.parse(await readFile(TOKEN_PATH, "utf8")) as Partial<StoredToken>;
-    if (!parsed.refreshToken || !parsed.accessToken || !parsed.expiresAt) return null;
-    return {
-      refreshToken: parsed.refreshToken,
-      accessToken: parsed.accessToken,
-      expiresAt: parsed.expiresAt,
-      email: parsed.email ?? "",
-    };
-  } catch {
-    return null;
+async function readToken(userId: string): Promise<StoredToken | null> {
+  await readyDb();
+  const rows = await sql()`
+    SELECT gmail_tokens.refresh_token, gmail_tokens.access_token, gmail_tokens.expires_at, users.email
+    FROM gmail_tokens
+    JOIN users ON users.id = gmail_tokens.user_id
+    WHERE gmail_tokens.user_id = ${userId}
+  `;
+  const row = rows[0] as TokenRow | undefined;
+  if (!row?.refresh_token || !row.access_token) return null;
+  return {
+    refreshToken: row.refresh_token,
+    accessToken: row.access_token,
+    expiresAt: Number(row.expires_at),
+    email: row.email ?? "",
+  };
+}
+
+async function writeToken(userId: string, email: string, token: StoredToken) {
+  await readyDb();
+  const db = sql();
+  await db`INSERT INTO users (id, email) VALUES (${userId}, ${email})
+    ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email`;
+  await db`INSERT INTO gmail_tokens (user_id, refresh_token, access_token, expires_at)
+    VALUES (${userId}, ${token.refreshToken}, ${token.accessToken}, ${token.expiresAt})
+    ON CONFLICT (user_id) DO UPDATE SET
+      refresh_token = EXCLUDED.refresh_token,
+      access_token = EXCLUDED.access_token,
+      expires_at = EXCLUDED.expires_at`;
+}
+
+export async function clearGmailToken(userId: string) {
+  await readyDb();
+  const stored = await readToken(userId);
+  if (stored) {
+    await fetch("https://oauth2.googleapis.com/revoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token: stored.refreshToken }),
+    }).catch(() => undefined);
   }
-}
-
-async function writeToken(token: StoredToken) {
-  await mkdir(path.dirname(TOKEN_PATH), { recursive: true });
-  await writeFile(TOKEN_PATH, JSON.stringify(token), { mode: 0o600 });
-}
-
-export async function clearGmailToken() {
-  await rm(TOKEN_PATH, { force: true });
+  await sql()`DELETE FROM gmail_tokens WHERE user_id = ${userId}`;
 }
 
 async function postToken(body: URLSearchParams): Promise<GoogleToken> {
@@ -84,7 +107,7 @@ async function postToken(body: URLSearchParams): Promise<GoogleToken> {
   return (await response.json()) as GoogleToken;
 }
 
-export async function exchangeCode(origin: string, code: string): Promise<StoredToken> {
+export async function exchangeCode(origin: string, code: string): Promise<{ userId: string; email: string }> {
   const token = await postToken(
     new URLSearchParams({
       code,
@@ -100,28 +123,29 @@ export async function exchangeCode(origin: string, code: string): Promise<Stored
   if (!token.refresh_token) {
     throw new Error("Google did not return a refresh token. Remove Khaata from your Google account access and connect again.");
   }
-  const email = await fetchEmail(token.access_token);
+  const account = await fetchAccount(token.access_token);
   const stored: StoredToken = {
     refreshToken: token.refresh_token,
     accessToken: token.access_token,
     expiresAt: Date.now() + (token.expires_in ?? 3600) * 1000,
-    email,
+    email: account.email,
   };
-  await writeToken(stored);
-  return stored;
+  await writeToken(account.userId, account.email, stored);
+  return { userId: account.userId, email: account.email };
 }
 
-async function fetchEmail(accessToken: string): Promise<string> {
-  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
+async function fetchAccount(accessToken: string): Promise<{ userId: string; email: string }> {
+  const response = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!response.ok) return "";
-  const profile = (await response.json()) as { emailAddress?: string };
-  return profile.emailAddress ?? "";
+  if (!response.ok) throw new Error("Google did not return the signed-in account.");
+  const profile = (await response.json()) as { sub?: string; email?: string };
+  if (!profile.sub) throw new Error("Google did not return an account id.");
+  return { userId: profile.sub, email: profile.email ?? "" };
 }
 
-async function accessToken(): Promise<string> {
-  const stored = await readToken();
+async function accessToken(userId: string): Promise<string> {
+  const stored = await readToken(userId);
   if (!stored) throw new Error("Gmail is not connected.");
   if (stored.expiresAt > Date.now() + 60_000) return stored.accessToken;
 
@@ -134,7 +158,7 @@ async function accessToken(): Promise<string> {
     }),
   );
   if (!token.access_token) {
-    await clearGmailToken();
+    await clearGmailToken(userId);
     throw new Error("Gmail access expired. Connect again.");
   }
   const next: StoredToken = {
@@ -142,13 +166,14 @@ async function accessToken(): Promise<string> {
     accessToken: token.access_token,
     expiresAt: Date.now() + (token.expires_in ?? 3600) * 1000,
   };
-  await writeToken(next);
+  await writeToken(userId, stored.email, next);
   return next.accessToken;
 }
 
-export async function gmailStatus(): Promise<GmailStatus> {
+export async function gmailStatus(userId: string | null): Promise<GmailStatus> {
   if (!gmailConfigured()) return { configured: false, connected: false, email: null };
-  const stored = await readToken();
+  if (!userId) return { configured: true, connected: false, email: null };
+  const stored = await readToken(userId);
   if (!stored) return { configured: true, connected: false, email: null };
   return { configured: true, connected: true, email: stored.email || null };
 }
@@ -196,8 +221,8 @@ async function readAlert(token: string, id: string): Promise<GmailAlert | null> 
   return { id: message.id, text, from, subject };
 }
 
-export async function syncBankMail(): Promise<GmailAlert[]> {
-  const token = await accessToken();
+export async function syncBankMail(userId: string): Promise<GmailAlert[]> {
+  const token = await accessToken(userId);
   const ids = await listBankMessageIds(token);
   const alerts: GmailAlert[] = [];
   for (const id of ids) {

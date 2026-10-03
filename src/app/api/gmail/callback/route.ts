@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { exchangeCode, gmailConfigured } from "@/lib/gmail";
+import { sealSession, sessionCookieName, sessionCookieOptions } from "@/lib/session";
 
 function back(origin: string, gmail: string, reason?: string) {
   const url = new URL("/", origin);
@@ -27,8 +28,10 @@ export async function GET(request: NextRequest) {
   if (!code) return back(origin, "error", "Google did not return a sign-in code.");
 
   try {
-    await exchangeCode(origin, code);
-    return back(origin, "connected");
+    const account = await exchangeCode(origin, code);
+    const response = back(origin, "connected");
+    response.cookies.set(sessionCookieName(), await sealSession(account.userId), sessionCookieOptions());
+    return response;
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : "Gmail connection failed.";
     return back(origin, "error", message);

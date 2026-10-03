@@ -67,12 +67,15 @@ export function MailPanel({
   }, []);
 
   return (
-    <section className="rounded-3xl border border-line bg-paper-2 p-5">
+    <section className="rounded-3xl border border-line bg-paper-2 p-5 lg:flex lg:items-start lg:justify-between lg:gap-8">
+      <div className="max-w-2xl">
       <h2 className="font-serif text-3xl tracking-tight">Bank mail</h2>
       <p className="mt-2 text-sm leading-6 text-muted">
         Connect Gmail with read-only access. Khaata looks for payment alerts from banks and waits for you
         to file each one. Password emails are left out.
       </p>
+      </div>
+      <div className="lg:max-w-md lg:shrink-0 lg:text-right">
       {!status.configured && (
         <p className="mt-3 text-sm leading-6 text-gold">
           Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env.local, then restart the app. In Google
@@ -88,7 +91,7 @@ export function MailPanel({
         </a>
       )}
       {status.connected && (
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="mt-4 flex flex-wrap items-center gap-2 lg:justify-end">
           <p className="text-sm text-muted">{status.email || "Gmail connected"}</p>
           <button
             type="button"
@@ -112,6 +115,7 @@ export function MailPanel({
         </div>
       )}
       {message && <p className="mt-3 text-sm leading-6 text-muted">{message}</p>}
+      </div>
     </section>
   );
 }

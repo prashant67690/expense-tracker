@@ -155,8 +155,8 @@ export function KhaataApp({
   }, []);
 
   return (
-    <div className="min-h-full lg:grid lg:grid-cols-[220px_minmax(0,1fr)]">
-      <aside className="hidden border-r border-line bg-paper-2 lg:flex lg:min-h-full lg:flex-col lg:px-4 lg:py-6">
+    <div className="min-h-full lg:grid lg:h-screen lg:grid-cols-[248px_minmax(0,1fr)] lg:overflow-hidden">
+      <aside className="hidden border-r border-line bg-paper-2 lg:flex lg:h-screen lg:flex-col lg:overflow-y-auto lg:px-4 lg:py-6">
         <Brand />
         <nav className="mt-8 flex flex-col gap-1" aria-label="Sections">
           {VIEWS.map((item) => (
@@ -190,8 +190,8 @@ export function KhaataApp({
         </div>
       </aside>
 
-      <div className="mx-auto flex w-full max-w-5xl flex-col px-4 pb-24 pt-5 sm:px-6 lg:px-8 lg:pb-10">
-        <header className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-5">
+      <div className="flex min-h-0 w-full flex-col px-4 pb-24 pt-5 sm:px-6 lg:overflow-y-auto lg:px-8 lg:pb-10 xl:px-10">
+        <header className="flex flex-wrap items-end justify-between gap-4 border-b border-line bg-paper pb-5 lg:sticky lg:top-0 lg:z-10 lg:pt-1">
           <div className="lg:hidden">
             <Brand />
             <p className="mt-1 text-xs text-muted">
@@ -380,9 +380,12 @@ function Overview({
       )}
 
       {transactions.length === 0 ? (
-        <EmptyLedger onOpenInbox={onOpenInbox} />
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+          <EmptyLedger onOpenInbox={onOpenInbox} />
+          <HowItWorks columns={false} />
+        </div>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(18rem,0.7fr)]">
           <section className="rounded-3xl border border-line bg-paper-2 p-5">
             <h2 className="font-serif text-2xl">Where it went</h2>
             <ul className="mt-4 flex flex-col gap-3">
@@ -424,16 +427,64 @@ function Overview({
 
       {recent.length > 0 && (
         <section>
-          <h2 className="font-serif text-2xl">Latest movements</h2>
-          <div className="mt-3 overflow-hidden rounded-3xl border border-line bg-paper-2">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <h2 className="font-serif text-2xl">Latest movements</h2>
+            <button type="button" onClick={() => onOpenLedger("all")} className="text-sm text-muted underline">
+              Open the ledger
+            </button>
+          </div>
+          <div className="overflow-hidden rounded-3xl border border-line bg-paper-2 lg:hidden">
             {recent.slice(0, 8).map((item) => (
               <Receipt key={item.id} transaction={item} />
             ))}
           </div>
+          <div className="hidden overflow-hidden rounded-3xl border border-line bg-paper-2 lg:block">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-line text-xs uppercase tracking-wide text-muted">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Date</th>
+                  <th className="px-4 py-3 font-medium">Payee</th>
+                  <th className="px-4 py-3 font-medium">Category</th>
+                  <th className="px-4 py-3 font-medium">Bank</th>
+                  <th className="px-4 py-3 text-right font-medium">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recent.slice(0, 12).map((item) => (
+                  <tr key={item.id} className="border-b border-dashed border-line last:border-b-0">
+                    <td className="whitespace-nowrap px-4 py-3 text-muted">{formatDate(item.occurredAt)}</td>
+                    <td className="px-4 py-3 font-medium">{item.merchant}</td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-2">
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{ background: SWATCH[item.categoryId] ?? SWATCH.other }}
+                          aria-hidden
+                        />
+                        {categoryById(item.categoryId).label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-muted">
+                      {item.bank}
+                      {item.accountMask ? ` ··${item.accountMask}` : ""}
+                    </td>
+                    <td
+                      className={`whitespace-nowrap px-4 py-3 text-right font-serif text-lg ${
+                        item.direction === "debit" ? "text-clay" : "text-green"
+                      }`}
+                    >
+                      {item.direction === "debit" ? "−" : "+"}
+                      {formatMoney(item.amount, item.currency)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
 
-      <HowItWorks />
+      {transactions.length > 0 && <HowItWorks />}
     </div>
   );
 }
@@ -457,14 +508,14 @@ function EmptyLedger({ onOpenInbox }: { onOpenInbox: () => void }) {
   );
 }
 
-function HowItWorks() {
+function HowItWorks({ columns = true }: { columns?: boolean }) {
   return (
-    <section className="grid gap-4 rounded-3xl bg-ink px-5 py-6 text-paper-2 md:grid-cols-3">
-      <div>
-        <p className="text-xs uppercase tracking-[0.16em] text-[#d7c4a3]">How a phone app does this</p>
-        <h2 className="mt-2 font-serif text-2xl">The bank texts you. The ledger files it.</h2>
+    <section className={`grid gap-6 rounded-3xl bg-ink px-5 py-6 text-paper-2 ${columns ? "lg:grid-cols-3 lg:px-8" : ""}`}>
+      <div className={columns ? "lg:col-span-3" : ""}>
+        <p className="text-xs uppercase tracking-[0.16em] text-[#d7c4a3]">How filing works</p>
+        <h2 className="mt-2 font-serif text-2xl">The bank sends the alert. You confirm the line.</h2>
       </div>
-      <ol className="space-y-3 text-sm leading-6 text-[#f3eee6] md:col-span-2">
+      <ol className={`grid gap-4 text-sm leading-6 text-[#f3eee6] ${columns ? "lg:col-span-3 lg:grid-cols-3" : ""}`}>
         <li>
           <span className="font-medium">1. Catch the alert.</span> A website cannot open the SMS inbox. On
           Android, a personal app can ask to read your own texts, or listen to bank notifications. iPhone
@@ -578,7 +629,7 @@ function Inbox({
   return (
     <div className="flex flex-col gap-6">
       <MailPanel notice={mailNotice} onAlerts={fileMail} />
-      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(22rem,0.8fr)_minmax(0,1.2fr)]">
       <section className="rounded-3xl border border-line bg-paper-2 p-5">
         <h2 className="font-serif text-3xl tracking-tight">Paste the alert</h2>
         <p className="mt-2 text-sm leading-6 text-muted">
@@ -643,7 +694,7 @@ function Inbox({
         )}
       </section>
 
-      <section className="flex flex-col gap-3">
+      <section className="grid content-start gap-3 xl:grid-cols-2">
         {drafts.length === 0 && (
           <div className="rounded-3xl border border-dashed border-line px-5 py-8 text-sm leading-6 text-muted">
             Nothing read yet. After you paste an SMS or check bank mail, each alert becomes a slip you can
@@ -996,29 +1047,77 @@ function Ledger({
           No lines match these filters.
         </p>
       ) : (
-        <div className="overflow-hidden rounded-3xl border border-line bg-paper-2">
-          {visible.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setSelected(item.id === selected ? null : item.id)}
-              className={`block w-full text-left ${item.id === selected ? "bg-gold-soft" : ""}`}
-            >
-              <Receipt transaction={item} />
-            </button>
-          ))}
+        <div className={current ? "grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]" : ""}>
+          <div className="overflow-hidden rounded-3xl border border-line bg-paper-2 lg:hidden">
+            {visible.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setSelected(item.id === selected ? null : item.id)}
+                className={`block w-full text-left ${item.id === selected ? "bg-gold-soft" : ""}`}
+              >
+                <Receipt transaction={item} />
+              </button>
+            ))}
+          </div>
+          <div className="hidden overflow-hidden rounded-3xl border border-line bg-paper-2 lg:block">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-line text-xs uppercase tracking-wide text-muted">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Date</th>
+                  <th className="px-4 py-3 font-medium">Payee</th>
+                  <th className="px-4 py-3 font-medium">Category</th>
+                  <th className="px-4 py-3 font-medium">Bank</th>
+                  <th className="px-4 py-3 text-right font-medium">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((item) => (
+                  <tr
+                    key={item.id}
+                    tabIndex={0}
+                    onClick={() => setSelected(item.id === selected ? null : item.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelected(item.id === selected ? null : item.id);
+                      }
+                    }}
+                    className={`cursor-pointer border-b border-dashed border-line last:border-b-0 ${
+                      item.id === selected ? "bg-gold-soft" : "hover:bg-paper"
+                    }`}
+                  >
+                    <td className="whitespace-nowrap px-4 py-3 text-muted">{formatDate(item.occurredAt)}</td>
+                    <td className="px-4 py-3 font-medium">{item.merchant}</td>
+                    <td className="px-4 py-3">{categoryById(item.categoryId).label}</td>
+                    <td className="px-4 py-3 text-muted">
+                      {item.bank}
+                      {item.accountMask ? ` ··${item.accountMask}` : ""}
+                    </td>
+                    <td
+                      className={`whitespace-nowrap px-4 py-3 text-right font-serif text-lg ${
+                        item.direction === "debit" ? "text-clay" : "text-green"
+                      }`}
+                    >
+                      {item.direction === "debit" ? "−" : "+"}
+                      {formatMoney(item.amount, item.currency)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {current && (
+            <Editor
+              transaction={current}
+              onUpdate={(patch) => onUpdate(current.id, patch)}
+              onDelete={() => {
+                onDelete(current.id);
+                setSelected(null);
+              }}
+            />
+          )}
         </div>
-      )}
-
-      {current && (
-        <Editor
-          transaction={current}
-          onUpdate={(patch) => onUpdate(current.id, patch)}
-          onDelete={() => {
-            onDelete(current.id);
-            setSelected(null);
-          }}
-        />
       )}
     </div>
   );
@@ -1034,7 +1133,7 @@ function Editor({
   onDelete: () => void;
 }) {
   return (
-    <section className="rounded-3xl border border-line bg-paper-2 p-4">
+    <section className="rounded-3xl border border-line bg-paper-2 p-4 lg:sticky lg:top-24">
       <h3 className="font-serif text-2xl">Correct this line</h3>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <Field label="Payee" id="edit-merchant">

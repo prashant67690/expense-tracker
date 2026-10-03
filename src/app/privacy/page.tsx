@@ -87,27 +87,22 @@ export default function PrivacyPolicyPage() {
       <LegalSection title="Where the Gmail token is kept">
         <p>
           After you connect, Google returns an access token and a refresh token.
-          Those tokens, their expiry time, and the Gmail address are written to
-          a file named <span className="text-ink">.data/gmail-token.json</span>{" "}
-          on the computer that runs the app. The file is plain JSON. It is not
-          encrypted. It is written so that only the user account on that
-          computer can read and write it, and it is excluded from git. The
-          Google client id and client secret used to start the sign-in are kept
-          in <span className="text-ink">.env.local</span> on that same computer.
+          Khaata stores those tokens in its database, in a row that belongs to
+          your Google account. A session cookie in this browser tells the server
+          which row is yours. Someone else’s cookie cannot read your row. The
+          tokens are not encrypted by the app before they are saved. The
+          database host can read them. The Google client id and client secret
+          stay in the server environment.
         </p>
         <p>
-          Disconnect deletes that token file. It does not revoke the permission
-          in your Google account. To remove ledger-app, or whatever name you
-          gave this OAuth client, open your Google Account permissions and
-          remove its access. Until you do that, Google still lists the app as
-          allowed to read Gmail, even though this copy of Khaata no longer holds
-          the token.
+          Disconnect deletes your token row and asks Google to revoke that
+          token. Your ledger in this browser stays. If Google still lists the
+          app under your account permissions, remove it there as well.
         </p>
         <p>
-          Anyone who can read files as that computer user, or who can use the
-          app while it is running on that machine, can use the token to read the
-          same bank mail. If another person hosts Khaata for you, that host can
-          see the token and the bank messages fetched when you check mail.
+          Mail is fetched only for the signed-in account. The person who
+          operates this database can still read the stored tokens and the
+          messages fetched during a check.
         </p>
       </LegalSection>
 

@@ -62,7 +62,7 @@ The inbox can read payment emails from Gmail. It uses read-only access, searches
 4. Copy `.env.example` to `.env.local` and fill in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
 5. Restart `npm run dev`, open Inbox, and choose **Connect Gmail**.
 
-The refresh token stays in `.data/gmail-token.json` on this machine. Disconnect deletes it.
+Each person's refresh token is stored in Postgres and deleted when they disconnect.
 
 ## Privacy
 
