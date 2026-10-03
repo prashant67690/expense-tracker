@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #f3eee6;
+  --paper-2: #fffaf3;
+  --ink: #1c1915;
+  --muted: #6b645b;
+  --line: #e3d9c8;
+  --green: #0f6b50;
+  --green-soft: #e4f3ec;
+  --clay: #9a3412;
+  --clay-soft: #f8ece4;
+  --gold: #8a5a12;
+  --gold-soft: #f8f0dc;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-green: var(--green);
+  --color-green-soft: var(--green-soft);
+  --color-clay: var(--clay);
+  --color-clay-soft: var(--clay-soft);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --font-sans: var(--font-outfit);
+  --font-serif: var(--font-fraunces);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-outfit), sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: #d7efe4;
+}
