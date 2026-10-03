@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --experimental-strip-types --test src/lib/parser.test.ts"
+    "test": "node --experimental-strip-types --test src/lib/parser.test.ts src/lib/mail-text.test.ts"
   },
   "dependencies": {
     "next": "16.3.8",

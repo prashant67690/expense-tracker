@@ -21,6 +21,16 @@ describe("parseBankSms", () => {
     assert.equal(result.fields.balance, 45230.12);
   });
 
+  it("keeps the full amount when it has no comma and more than three digits", () => {
+    const result = parseBankSms(
+      "HDFC Bank: Rs.12500.00 debited from A/c **1234 on 03-10-26 to VPA swiggy@okhdfcbank. Avl Bal: Rs.45230.12",
+    );
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.fields.amount, 12500);
+    assert.equal(result.fields.balance, 45230.12);
+  });
+
   it("reads an SBI debit and the bank named at the end", () => {
     const result = parseBankSms(
       "Dear Customer, INR 2,499.00 has been debited from your A/c no. XX4321 on 28-Sep-26 towards AMAZON PAY. Avl Bal INR 18,440.55 -SBI",
@@ -60,6 +70,21 @@ describe("parseBankSms", () => {
     assert.equal(result.fields.merchant, "Salary Neft");
     assert.equal(result.fields.bank, "Axis Bank");
     assert.equal(result.fields.occurredAt, "2026-10-01");
+  });
+
+  it("reads an HDFC salary mail that says the amount was added", () => {
+    const result = parseBankSms(
+      "Dear Customer, Greetings from HDFC Bank! Your salary of Rs. INR 80,298.00 has been added in your account ending XX9841 on 25-SEP-2026 from Sep 26 Sal The available balance in your account is Rs. INR 81,384.14",
+    );
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.fields.direction, "credit");
+    assert.equal(result.fields.amount, 80298);
+    assert.equal(result.fields.balance, 81384.14);
+    assert.equal(result.fields.bank, "HDFC Bank");
+    assert.equal(result.fields.merchant, "Salary");
+    assert.equal(result.fields.accountMask, "9841");
+    assert.equal(result.fields.occurredAt, "2026-09-25");
   });
 
   it("reads a card spend and ignores the available limit", () => {

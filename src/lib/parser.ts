@@ -40,8 +40,10 @@ type MoneyHit = {
   index: number;
 };
 
-const MONEY =
-  /(?:₹|Rs\.?|INR|USD|EUR|GBP|\$|€|£)\s*([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)/gi;
+const AMOUNT_NUMBER =
+  String.raw`[0-9]{1,3}(?:,[0-9]{2,3})+(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?`;
+
+const MONEY = new RegExp(String.raw`(?:₹|Rs\.?|INR|USD|EUR|GBP|\$|€|£)\s*(${AMOUNT_NUMBER})`, "gi");
 
 function currencyFromToken(token: string): string {
   if (/₹|Rs|INR/i.test(token)) return "INR";
@@ -54,8 +56,10 @@ function parseAmount(raw: string): number {
   return Number(raw.replace(/,/g, ""));
 }
 
-const BARE_AMOUNT =
-  /\b(?:debited|credited|spent|paid|withdrawn|deducted)\s+by\s+([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)/gi;
+const BARE_AMOUNT = new RegExp(
+  String.raw`\b(?:debited|credited|spent|paid|withdrawn|deducted)\s+by\s+(${AMOUNT_NUMBER})`,
+  "gi",
+);
 
 function moneyHits(text: string): MoneyHit[] {
   const hits: MoneyHit[] = [];
@@ -116,9 +120,9 @@ function pickBalance(text: string, hits: MoneyHit[], primary: MoneyHit | null): 
 
 function detectDirection(text: string): Direction | null {
   const creditedToAccount =
-    /\b(credited|deposited|received)\b[^.]{0,40}\b(a\/c|acct|account|your)\b/i.test(
+    /\b(credited|deposited|received|added)\b[^.]{0,60}\b(a\/c|acct|account|your)\b/i.test(
       text,
-    ) || /\b(credited to|deposited (in|to)|received in)\b/i.test(text);
+    ) || /\b(credited to|deposited (in|to)|received in|added in)\b/i.test(text);
   const refund = /\brefund\b/i.test(text);
   const debit =
     /\b(debited|spent|withdrawn|deducted|paid|purchase|sent)\b/i.test(text);
@@ -248,6 +252,8 @@ function extractMerchant(text: string): string {
     const local = handle[1].split("@")[0];
     if (!/^\d+$/.test(local)) return prettyHandle(local);
   }
+
+  if (/\byour\s+salary\b/i.test(text)) return "Salary";
 
   const patterns = [
     /\byour\s+([A-Za-z][A-Za-z0-9 &]{1,32}?)\s+bill\b/i,

@@ -38,7 +38,7 @@ Banks already send the event. The product decision is how the app hears it.
 | Paste, share, or upload the text | Android and iPhone | You confirm each batch. This app does that. |
 | Notification access | Android | The app reads notifications from your bank apps. You grant notification access in system settings. |
 | Read SMS | Android, personal or sideloaded apps | `READ_SMS` is a restricted Play permission. Google generally will not approve a store listing that asks for it just to track spending. |
-| Email alerts | Both | Forward the bank’s email and parse the same fields. |
+| Email alerts | Both | Connect Gmail in the inbox, or paste a bank email. You still confirm each batch. |
 | Account aggregator or open banking | Both, where a bank supports it | The regulated way to read real account history. In India that is the Account Aggregator network. |
 
 iOS does not let third-party apps read SMS. Do not plan an iPhone version around the inbox.
@@ -52,6 +52,18 @@ If you still build a personal Android reader for your own phone:
 
 Play-store expense apps that need a live feed usually use notification access, email, or a regulated bank connection instead of SMS permission.
 
+## Bank mail
+
+The inbox can read payment emails from Gmail. It uses read-only access, searches the last 30 days for bank senders, and shows each alert for you to file. Nothing is written to the ledger until you confirm it. Mail is loaded when you choose **Check bank mail**.
+
+1. In Google Cloud, create an OAuth client of type **Web application** and enable the Gmail API.
+2. Add your Google account as a test user on the consent screen.
+3. Set the redirect URI to the site you actually open, plus `/api/gmail/callback`. For the default dev server that is `http://127.0.0.1:3000/api/gmail/callback`.
+4. Copy `.env.example` to `.env.local` and fill in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+5. Restart `npm run dev`, open Inbox, and choose **Connect Gmail**.
+
+The refresh token stays in `.data/gmail-token.json` on this machine. Disconnect deletes it.
+
 ## Privacy
 
-The ledger is stored in `localStorage` under `khaata.ledger.v1`. There is no account and no server upload. Clearing site data, or using **Clear ledger**, removes the transactions.
+The ledger is stored in `localStorage` under `khaata.ledger.v1`. Bank mail is fetched by this app’s server only after you connect Gmail, and only messages that match the bank search are returned for review. Clearing site data, or using **Clear ledger**, removes the transactions. Disconnect Gmail to drop the mail token.

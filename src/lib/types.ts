@@ -17,7 +17,8 @@ export type Transaction = ParsedFields & {
   categoryId: string;
   rawSms: string;
   note: string;
-  source: "sms" | "manual";
+  source: "sms" | "manual" | "email";
+  externalId?: string;
   createdAt: string;
 };
 

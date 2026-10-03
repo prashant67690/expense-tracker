@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { MailPanel } from "@/components/mail-panel";
 import { CATEGORIES, categorize, categoryById } from "@/lib/categories";
 import {
   currentMonthKey,
@@ -13,7 +15,8 @@ import {
 import { parseBankSms, splitSmsBatch } from "@/lib/parser";
 import { SAMPLE_SMS } from "@/lib/samples";
 import { getLedger, getServerLedger, subscribeLedger, updateLedger } from "@/lib/storage";
-import type { CategoryRule, Direction, Transaction } from "@/lib/types";
+import type { GmailAlert } from "@/lib/gmail-types";
+import type { CategoryRule, Direction, ParsedFields, Transaction } from "@/lib/types";
 
 type View = "overview" | "inbox" | "ledger" | "rules";
 
@@ -28,7 +31,7 @@ type Draft = {
 
 const VIEWS: { id: View; label: string; caption: string }[] = [
   { id: "overview", label: "Overview", caption: "Month" },
-  { id: "inbox", label: "Inbox", caption: "Paste SMS" },
+  { id: "inbox", label: "Inbox", caption: "SMS and mail" },
   { id: "ledger", label: "Ledger", caption: "All lines" },
   { id: "rules", label: "Rules", caption: "Categories" },
 ];
@@ -54,9 +57,23 @@ function sameMessage(left: string, right: string): boolean {
   return left.replace(/\s+/g, " ").trim().toLowerCase() === right.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-export function KhaataApp() {
+function sameFiledPayment(existing: Transaction, fields: ParsedFields): boolean {
+  if (!existing.occurredAt || !fields.occurredAt || existing.occurredAt !== fields.occurredAt) return false;
+  if (existing.amount !== fields.amount || existing.currency !== fields.currency) return false;
+  if (existing.direction !== fields.direction) return false;
+  if (existing.accountMask && fields.accountMask && existing.accountMask !== fields.accountMask) return false;
+  return true;
+}
+
+export function KhaataApp({
+  initialView = "overview",
+  mailNotice = "",
+}: {
+  initialView?: View;
+  mailNotice?: string;
+}) {
   const data = useSyncExternalStore(subscribeLedger, getLedger, getServerLedger);
-  const [view, setView] = useState<View>("overview");
+  const [view, setView] = useState<View>(initialView);
   const [month, setMonth] = useState(currentMonthKey());
   const [allMonths, setAllMonths] = useState(false);
   const [currency, setCurrency] = useState("INR");
@@ -69,11 +86,15 @@ export function KhaataApp() {
     const createdAt = new Date().toISOString();
     updateLedger((current) => {
       const next = items
-        .filter(
-          (item) =>
-            item.source === "manual" ||
-            !current.transactions.some((existing) => sameMessage(existing.rawSms, item.rawSms)),
-        )
+        .filter((item) => {
+          if (item.source === "manual") return true;
+          return !current.transactions.some(
+            (existing) =>
+              (item.externalId && existing.externalId === item.externalId) ||
+              sameMessage(existing.rawSms, item.rawSms) ||
+              sameFiledPayment(existing, item),
+          );
+        })
         .map((item) => ({ ...item, id: newId(), createdAt }));
       return { ...current, transactions: [...next, ...current.transactions] };
     });
@@ -128,6 +149,11 @@ export function KhaataApp() {
   const activeCurrency = currencies.includes(currency) ? currency : (currencies[0] ?? currency);
   const inCurrency = scoped.filter((item) => item.currency === activeCurrency);
 
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has("gmail")) return;
+    window.history.replaceState(null, "", "/");
+  }, []);
+
   return (
     <div className="min-h-full lg:grid lg:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="hidden border-r border-line bg-paper-2 lg:flex lg:min-h-full lg:flex-col lg:px-4 lg:py-6">
@@ -150,15 +176,33 @@ export function KhaataApp() {
             </button>
           ))}
         </nav>
-        <p className="mt-auto px-3 pt-8 text-xs leading-5 text-muted">
-          Messages stay in this browser. OTP texts are skipped and never filed.
-        </p>
+        <div className="mt-auto px-3 pt-8 text-xs leading-5 text-muted">
+          <p>SMS stays in this browser. Gmail is read only for bank alerts, and you confirm each one.</p>
+          <p className="mt-2">
+            <Link href="/privacy" className="underline">
+              Privacy
+            </Link>
+            {" · "}
+            <Link href="/terms" className="underline">
+              Terms
+            </Link>
+          </p>
+        </div>
       </aside>
 
       <div className="mx-auto flex w-full max-w-5xl flex-col px-4 pb-24 pt-5 sm:px-6 lg:px-8 lg:pb-10">
         <header className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-5">
           <div className="lg:hidden">
             <Brand />
+            <p className="mt-1 text-xs text-muted">
+              <Link href="/privacy" className="underline">
+                Privacy
+              </Link>
+              {" · "}
+              <Link href="/terms" className="underline">
+                Terms
+              </Link>
+            </p>
           </div>
           <MonthControls
             month={month}
@@ -187,6 +231,7 @@ export function KhaataApp() {
             <Inbox
               existing={transactions}
               rules={rules}
+              mailNotice={mailNotice}
               onSave={(items) => {
                 addTransactions(items);
                 setView("overview");
@@ -443,10 +488,12 @@ function HowItWorks() {
 function Inbox({
   existing,
   rules,
+  mailNotice,
   onSave,
 }: {
   existing: Transaction[];
   rules: CategoryRule[];
+  mailNotice: string;
   onSave: (items: Omit<Transaction, "id" | "createdAt">[]) => void;
 }) {
   const [raw, setRaw] = useState("");
@@ -485,10 +532,53 @@ function Inbox({
     setDrafts(next);
   }
 
+  const fileMail = useCallback(
+    (alerts: GmailAlert[]) => {
+      const seen = new Set<string>();
+      const next = alerts.flatMap((alert): Draft[] => {
+        const parsed = parseBankSms(alert.text);
+        const duplicate =
+          seen.has(alert.id) ||
+          existing.some(
+            (item) =>
+              item.externalId === alert.id ||
+              sameMessage(item.rawSms, alert.text) ||
+              (parsed.ok && sameFiledPayment(item, parsed.fields)),
+          );
+        seen.add(alert.id);
+        if (duplicate) return [];
+        if (!parsed.ok) {
+          return [{ key: newId(), raw: alert.text, include: false, reason: parsed.reason }];
+        }
+        const categoryId = categorize(parsed.fields.merchant, alert.text, parsed.fields.direction, rules);
+        return [
+          {
+            key: newId(),
+            raw: alert.text,
+            include: true,
+            transaction: {
+              ...parsed.fields,
+              categoryId,
+              rawSms: alert.text.trim(),
+              note: "",
+              source: "email" as const,
+              externalId: alert.id,
+            },
+          },
+        ];
+      });
+      setDrafts(next);
+      return next.length;
+    },
+    [existing, rules],
+  );
+
   const ready = drafts.filter((draft) => draft.include && draft.transaction);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+    <div className="flex flex-col gap-6">
+      <MailPanel notice={mailNotice} onAlerts={fileMail} />
+      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
       <section className="rounded-3xl border border-line bg-paper-2 p-5">
         <h2 className="font-serif text-3xl tracking-tight">Paste the alert</h2>
         <p className="mt-2 text-sm leading-6 text-muted">
@@ -556,8 +646,8 @@ function Inbox({
       <section className="flex flex-col gap-3">
         {drafts.length === 0 && (
           <div className="rounded-3xl border border-dashed border-line px-5 py-8 text-sm leading-6 text-muted">
-            Nothing read yet. After you paste, each alert becomes a slip you can recategorize before it
-            hits the ledger.
+            Nothing read yet. After you paste an SMS or check bank mail, each alert becomes a slip you can
+            recategorize before it hits the ledger.
           </div>
         )}
         {drafts.map((draft) => (
@@ -644,6 +734,7 @@ function Inbox({
           )}
         </section>
       </section>
+      </div>
     </div>
   );
 }
